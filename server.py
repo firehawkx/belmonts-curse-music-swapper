@@ -10,6 +10,7 @@ BACKUP = os.path.join(HERE, 'backup')
 FIRST = os.path.join(BACKUP, 'Master.first-seen.bank')
 UNDO = os.path.join(BACKUP, 'Master.before-last-swap.bank')
 CACHE = os.path.join(HERE, 'cache')
+EXTRACT = os.path.join(HERE, 'extract')
 HISTORY = os.path.join(HERE, 'history.json')
 PORT = 8765
 
@@ -32,7 +33,7 @@ def game():
 def run(args):
     d, _ = game()
     return subprocess.run([sys.executable, TOOL, '--game', d] + args, capture_output=True, text=True,
-                          creationflags=ms.NO_WINDOW)
+                          encoding='utf-8', errors='replace', creationflags=ms.NO_WINDOW)
 
 
 def game_open(exe):
@@ -86,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if not os.path.exists(FIRST): copy(g['bank'], FIRST)
                 return self.reply(200, {'setup': setup, 'tracks': tracks(g['bank']), 'history': read_history(),
-                                        'game_open': game_open(g['exe']), 'has_undo': os.path.exists(UNDO),
+                                        'names': ms.TRACKS, 'game_open': game_open(g['exe']), 'has_undo': os.path.exists(UNDO),
                                         'bank_mb': round(os.path.getsize(g['bank']) / 2**20),
                                         'ver': int(os.path.getmtime(g['bank'])), 'game_dir': os.path.dirname(d)})
             except Exception as e:
@@ -135,6 +136,15 @@ class Handler(BaseHTTPRequestHandler):
             if data.get('ffmpeg'): cfg['ffmpeg'] = data['ffmpeg'].strip().strip('"')
             ms.save_config(cfg)
             return self.reply(200, {'ok': True})
+        if u.path == '/api/extract_all':
+            d, g = game()
+            if not d: return self.reply(409, {'error': 'no_game'})
+            r = run(['extract-all', EXTRACT])
+            lines = (r.stdout or '').strip().splitlines()
+            if r.returncode or not lines or not lines[-1].startswith('{'):
+                return self.reply(200, {'ok': False, 'log': (r.stdout + r.stderr).strip()[-2000:]})
+            j = json.loads(lines[-1])
+            return self.reply(200, {'ok': True, 'log': '\n'.join(lines[:-1]), 'dir': j['dir'], 'count': len(j['files'])})
         if not lock.acquire(blocking=False):
             return self.reply(409, {'error': 'busy'})
         try:

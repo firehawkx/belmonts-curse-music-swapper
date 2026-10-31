@@ -7,6 +7,71 @@ TL = 48000
 RATES = {1: 8000, 2: 11000, 3: 11025, 4: 16000, 5: 22050, 6: 24000, 7: 32000, 8: 44100, 9: 48000}
 GAME_GLOB = "*Belmont*Curse*"
 
+# Track metadata shared by the UI and extraction:
+# track id -> [english title, english stage, pt title/stage, tab]
+TRACKS = {
+    'Mus_StartScreen': ['Main Menu', '', '', 'other'],
+    'Mus_Credits_Normal': ['Credits', '', 'Créditos', 'other'],
+    'Mus_Credits_True': ['Good Ending', '', 'Final bom', 'other'],
+    'Mus_Credits_Bad': ['Bad Ending', '', 'Final ruim', 'other'],
+    'Street Poor_Arrangement1 - Rose Theme': ['Rose Intro Theme', '', 'Tema de abertura da Rose', 'areas'],
+    'Mus_Biome_StreetsPoor_Intro_Edit': ['Pre Intro to Paris Biome', '', 'Antes de Paris', 'areas'],
+    'Mus_Biome_StreetsPoor_Edit_Newer_AtoB': ['Paris Streets (A → B)', '', 'Ruas de Paris', 'areas'],
+    'Mus_Biome_StreetsPoor_Edit_Newer_BtoA': ['Paris Streets (B → A)', '', 'Ruas de Paris', 'areas'],
+    'Mus_Biome_Cemetary_Edit': ['Holy Innocents Cemetery', '', 'Cemitério dos Inocentes', 'areas'],
+    'Mus_Biome_Catacombs_Edit': ['Catacombs of Paris', '', 'Catacumbas de Paris', 'areas'],
+    'Mus_Biome_ClockTower_Edit': ['Clock Tower', '', 'Torre do Relógio', 'areas'],
+    'Mus_Biome_Library_Edit': ['Library', '', 'Biblioteca', 'areas'],
+    'Mus_Biome_MainHall_Edit_BloodyTears_New': ['Main Hall', '', 'Salão Principal', 'areas'],
+    'Mus_Biome_MainHall_Bridge_Edit': ['Notre-Dame Bridge / Castle Drawbridge', '', 'Ponte de Notre-Dame / Ponte levadiça', 'areas'],
+    'Mus_Biome_MainHall_Bridge_Edit_Drums': ['Notre-Dame Bridge / Castle Drawbridge (drums)', '', 'Ponte de Notre-Dame / Ponte levadiça (tambores)', 'areas'],
+    'Mus_Biome_NotreDame_Edit': ['Notre-Dame', '', '', 'areas'],
+    'Mus_Biome_HallOfMirrors_Edit': ['Hall of Mirrors', '', 'Salão dos Espelhos', 'areas'],
+    'Mus_Biome_MasterQuarters': ["Master's Quarters", '', 'Aposentos do Mestre', 'areas'],
+    'Mus_Boss_Leon_Main': ['The Fallen (Leon)', 'Gate to the Catacombs, Paris Streets', 'Portão das Catacumbas, Ruas de Paris', 'bosses'],
+    'Mus_Boss_Jeanne_Main': ['Joan of Arc', 'Roof of the Tower, Paris Streets', 'Telhado da Torre, Ruas de Paris', 'bosses'],
+    'Mus_Boss_Medusa': ['Medusa', "Serpent's Lair, Holy Innocents' Cemetery", 'Covil da Serpente, Cemitério dos Inocentes', 'bosses'],
+    'Mus_Boss_Death_Catacombs': ['Death', 'Stairway to Hell, Catacombs', 'Escadaria do Inferno, Catacumbas', 'bosses'],
+    'Mus_Boss_Isaac_MainHall_Edit': ['Isaac', 'Main Hall', 'Salão Principal', 'bosses'],
+    'Mus_Boss_Talos_Edit': ['Talos', 'Throne of the Builder, Clock Tower', 'Trono do Construtor, Torre do Relógio', 'bosses'],
+    'Mus_Boss_Carmilla_Edit': ['Carmilla', 'Observatory, Library', 'Observatório, Biblioteca', 'bosses'],
+    'Mus_Room_Brauner': ['Brauner', "Brauner's Atelier, Main Hall", 'Ateliê do Brauner, Salão Principal', 'bosses'],
+    'Mus_Boss_Mammon': ['Mammon', "Mammon's Lair, Catacombs of Paris", 'Covil do Mammon, Catacumbas de Paris', 'bosses'],
+    'Mus_Boss_Jeanne_Rematch': ['Joan of Arc (Rematch)', 'Courage Bell, Notre-Dame', 'Sino da Coragem, Notre-Dame', 'bosses'],
+    'Mus_Boss_Death_NotreDame_Edit': ['Death (Second Encounter)', 'Transept, Notre-Dame', 'Transepto, Notre-Dame', 'bosses'],
+    'Mus_Room_SaintLouis': ['Saint Louis', 'Palace of Justice, Paris Streets', 'Palácio da Justiça, Ruas de Paris', 'bosses'],
+    'Mus_Boss_Isaac_ClockTower_Edit': ['Isaac (Second Encounter)', 'Heart of the Clock, Clock Tower', 'Coração do Relógio, Torre do Relógio', 'bosses'],
+    'Mus_Boss_Dracula_Edit': ['Dracula (First Fight)', "Court of the Night, Master's Quarters", 'Corte da Noite, Aposentos do Mestre', 'bosses'],
+    'Mus_Boss_Succubus': ['Succubus', 'Hall of Mirrors, Belmont Manor', 'Salão dos Espelhos, Mansão Belmont', 'bosses'],
+    'Mus_Boss_StainedGlassKnight': ['Doppelganger', 'Gallery of the Four Virtues, Notre-Dame', 'Galeria das Quatro Virtudes, Notre-Dame', 'bosses'],
+    'Mus_Boss_Erinys_Edit': ['Arthur', 'Chapel, Notre-Dame', 'Capela, Notre-Dame', 'bosses'],
+    'Mus_Boss_DraculaBeast': ['Dracula (Beast)', "Court of the Night, Master's Quarters", 'Corte da Noite, Aposentos do Mestre', 'bosses'],
+    'Mus_Boss_DraculaBeast_Edit': ['Dracula (Beast, edit)', "Court of the Night, Master's Quarters", 'Corte da Noite, Aposentos do Mestre', 'bosses'],
+}
+# output folders per tab group, for extract-all
+EXTRACT_FOLDERS = {'areas': 'areas', 'bosses': 'bosses', 'other': 'menu_and_credits'}
+
+
+def is_music(name):
+    return name.startswith('Mus_') or 'Arrangement' in name
+
+
+def extract_group(name):
+    entry = TRACKS.get(name)
+    if entry: return EXTRACT_FOLDERS[entry[3]]
+    if name.startswith('Mus_Biome_'): return 'areas'
+    if name.startswith(('Mus_Boss_', 'Mus_Room_')): return 'bosses'
+    return 'menu_and_credits'
+
+
+def extract_title(name):
+    entry = TRACKS.get(name)
+    title = entry[0] if entry else name
+    title = title.replace('/', ' - ')
+    title = re.sub(r'[<>:"|?*\\]', '', title)
+    title = re.sub(r'\s+', ' ', title).strip().rstrip(' .')
+    return title or name
+
 
 def load_config():
     try:
@@ -376,7 +441,7 @@ class Studio:
 
 def isolated(game, args):
     r = subprocess.run([sys.executable, os.path.abspath(__file__), '--game', game, '_fmod'] + args,
-                       capture_output=True, text=True, creationflags=NO_WINDOW)
+                       capture_output=True, text=True, encoding='utf-8', errors='replace', creationflags=NO_WINDOW)
     if r.returncode: raise SystemExit('FMOD test failed:\n' + r.stderr[-2000:])
     return json.loads(r.stdout.strip().splitlines()[-1])
 
@@ -432,7 +497,7 @@ def check_section(game, bank, test, before, p, n, old_n, rate):
 def cmd_list(a):
     b = Bank(a.bank); fsb = b.fsb; out = []
     for i, n in enumerate(fsb.names):
-        if n.startswith('Mus_') or 'Arrangement' in n:
+        if is_music(n):
             r, c, s = fsb.info(i)
             old = round(s * TL / r)
             try:
@@ -523,43 +588,95 @@ def cmd_restore(a):
     print('written:', a.out)
 
 
-def cmd_extract(a):
-    ffmpeg = find_ffmpeg()
-    if not ffmpeg: raise SystemExit('ffmpeg not found')
-    b = Bank(a.bank); fsb = b.fsb; idx = fsb.index(a.track)
+def fck(r):
+    if r: raise SystemExit('FMOD error %d' % r)
+
+
+def one_fsb(b, fsb, idx, tmp):
+    "write one sample of the bank as a standalone FSB5 file, for FMOD to decode"
     v, chunks = fsb.hd[idx]
     hd = struct.pack('<Q', v & ~(0x7FFFFFF << 7))
     for j, (t, d) in enumerate(chunks):
         hd += struct.pack('<I', (t << 25) | (len(d) << 1) | (1 if j < len(chunks) - 1 else 0)) + d
     b.f.seek(fsb.dstart + fsb.offs[idx]); data = b.f.read(fsb.offs[idx + 1] - fsb.offs[idx])
-    b.close()
     names = struct.pack('<I', 4) + b'x\0\0\0'
     h = bytearray(fsb.h); struct.pack_into('<IIIII', h, 8, 1, len(hd), len(names), len(data), fsb.mode)
-    tmp = tempfile.mkdtemp(); one = os.path.join(tmp, 'one.fsb'); pcm = os.path.join(tmp, 'pcm.raw')
+    one = os.path.join(tmp, 'one.fsb')
     open(one, 'wb').write(bytes(h) + hd + names + data)
-    S, ver = load_fmod(game_paths(a.game)['plugins'])
+    return one
 
-    def ck(r):
-        if r: raise SystemExit('FMOD error %d' % r)
-    sy = C.c_void_p(); ck(S.FMOD_System_Create(C.byref(sy), ver))
-    ck(S.FMOD_System_SetOutput(sy, 2)); ck(S.FMOD_System_Init(sy, 8, 0, None))
-    snd = C.c_void_p(); ck(S.FMOD_System_CreateSound(sy, one.encode(), 0, None, C.byref(snd)))
-    sub = C.c_void_p(); ck(S.FMOD_Sound_GetSubSound(snd, 0, C.byref(sub)))
+
+def fmod_pcm(S, sy, one):
+    "decode one.fsb with the game's FMOD; returns (freq, chans, fmt, raw pcm)"
+    snd = C.c_void_p(); fck(S.FMOD_System_CreateSound(sy, one.encode(), 0, None, C.byref(snd)))
+    sub = C.c_void_p(); fck(S.FMOD_Sound_GetSubSound(snd, 0, C.byref(sub)))
     typ, fmt, ch, bits = C.c_int(), C.c_int(), C.c_int(), C.c_int()
-    ck(S.FMOD_Sound_GetFormat(sub, C.byref(typ), C.byref(fmt), C.byref(ch), C.byref(bits)))
-    freq, pri = C.c_float(), C.c_int(); ck(S.FMOD_Sound_GetDefaults(sub, C.byref(freq), C.byref(pri)))
-    size = C.c_uint(); ck(S.FMOD_Sound_GetLength(sub, C.byref(size), 4))
+    fck(S.FMOD_Sound_GetFormat(sub, C.byref(typ), C.byref(fmt), C.byref(ch), C.byref(bits)))
+    freq, pri = C.c_float(), C.c_int(); fck(S.FMOD_Sound_GetDefaults(sub, C.byref(freq), C.byref(pri)))
+    size = C.c_uint(); fck(S.FMOD_Sound_GetLength(sub, C.byref(size), 4))
     p1, p2, l1, l2 = C.c_void_p(), C.c_void_p(), C.c_uint(), C.c_uint()
-    ck(S.FMOD_Sound_Lock(sub, 0, size, C.byref(p1), C.byref(p2), C.byref(l1), C.byref(l2)))
-    open(pcm, 'wb').write(C.string_at(p1, l1.value) + (C.string_at(p2, l2.value) if l2.value else b''))
+    fck(S.FMOD_Sound_Lock(sub, 0, size, C.byref(p1), C.byref(p2), C.byref(l1), C.byref(l2)))
+    pcm = C.string_at(p1, l1.value) + (C.string_at(p2, l2.value) if l2.value else b'')
     S.FMOD_Sound_Unlock(sub, p1, p2, l1, l2)
-    S.FMOD_Sound_Release(snd); S.FMOD_System_Release(sy)
-    f = {2: 's16le', 4: 's32le', 5: 'f32le'}.get(fmt.value)
-    if not f: raise SystemExit('unexpected FMOD sample format %d' % fmt.value)
-    subprocess.run([ffmpeg, '-v', 'error', '-y', '-f', f, '-ar', str(int(freq.value)), '-ac', str(ch.value), '-i', pcm,
+    S.FMOD_Sound_Release(snd)
+    return freq.value, ch.value, fmt.value, pcm
+
+
+def cmd_extract(a):
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg: raise SystemExit('ffmpeg not found')
+    b = Bank(a.bank); fsb = b.fsb; idx = fsb.index(a.track)
+    tmp = tempfile.mkdtemp()
+    S, ver = load_fmod(game_paths(a.game)['plugins'])
+    sy = C.c_void_p(); fck(S.FMOD_System_Create(C.byref(sy), ver))
+    fck(S.FMOD_System_SetOutput(sy, 2)); fck(S.FMOD_System_Init(sy, 8, 0, None))
+    try:
+        freq, ch, fmt, pcm = fmod_pcm(S, sy, one_fsb(b, fsb, idx, tmp))
+    finally:
+        S.FMOD_System_Release(sy)
+        b.close()
+    f = {2: 's16le', 4: 's32le', 5: 'f32le'}.get(fmt)
+    if not f: raise SystemExit('unexpected FMOD sample format %d' % fmt)
+    raw = os.path.join(tmp, 'pcm.raw'); open(raw, 'wb').write(pcm)
+    subprocess.run([ffmpeg, '-v', 'error', '-y', '-f', f, '-ar', str(freq), '-ac', str(ch), '-i', raw,
                     '-b:a', '160k', a.out], check=True, creationflags=NO_WINDOW)
     shutil.rmtree(tmp, ignore_errors=True)
     print('written:', a.out)
+
+
+def cmd_extract_all(a):
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg: raise SystemExit('ffmpeg not found')
+    a.out = os.path.abspath(a.out or os.path.join(HERE, 'extract'))
+    b = Bank(a.bank); fsb = b.fsb
+    idxs = [i for i, n in enumerate(fsb.names) if is_music(n)]
+    if not idxs: raise SystemExit('no music tracks in this bank')
+    print('extracting %d tracks from %s' % (len(idxs), a.bank))
+    S, ver = load_fmod(game_paths(a.game)['plugins'])
+    sy = C.c_void_p(); fck(S.FMOD_System_Create(C.byref(sy), ver))
+    fck(S.FMOD_System_SetOutput(sy, 2)); fck(S.FMOD_System_Init(sy, 8, 0, None))
+    tmp = tempfile.mkdtemp()
+    files = []; used = set()
+    try:
+        for k, idx in enumerate(idxs, 1):
+            n = fsb.names[idx]
+            folder = os.path.join(a.out, extract_group(n)); os.makedirs(folder, exist_ok=True)
+            title = extract_title(n); name = title; j = 2
+            while os.path.join(folder, name + '.mp3') in used:
+                name = '%s (%d)' % (title, j); j += 1
+            used.add(os.path.join(folder, name + '.mp3'))
+            freq, ch, fmt, pcm = fmod_pcm(S, sy, one_fsb(b, fsb, idx, tmp))
+            f = {2: 's16le', 4: 's32le', 5: 'f32le'}.get(fmt)
+            if not f: raise SystemExit('unexpected FMOD sample format %d for %s' % (fmt, n))
+            raw = os.path.join(tmp, 'pcm.raw'); open(raw, 'wb').write(pcm)
+            mp3 = os.path.join(folder, name + '.mp3')
+            subprocess.run([ffmpeg, '-v', 'error', '-y', '-f', f, '-ar', str(freq), '-ac', str(ch), '-i', raw,
+                            '-b:a', '160k', mp3], check=True, creationflags=NO_WINDOW)
+            files.append(os.path.relpath(mp3, a.out))
+            print('[%d/%d] %s' % (k, len(idxs), files[-1]))
+    finally:
+        S.FMOD_System_Release(sy); b.close(); shutil.rmtree(tmp, ignore_errors=True)
+    print(json.dumps({'dir': a.out, 'files': files}))
 
 
 def cmd_fmod(a):
@@ -571,6 +688,8 @@ def cmd_fmod(a):
 
 
 def main():
+    try: sys.stdout.reconfigure(encoding='utf-8', errors='replace')  # track names contain non-cp1252 chars
+    except (AttributeError, OSError): pass
     ap = argparse.ArgumentParser(description="Swap music in Castlevania: Belmont's Curse (FMOD Master.bank)")
     ap.add_argument('--game', help='game folder (default: auto-detect)')
     sp = ap.add_subparsers(dest='cmd', required=True)
@@ -582,13 +701,16 @@ def main():
     p.add_argument('track'); p.add_argument('source'); p.add_argument('out'); p.add_argument('--bank')
     p = sp.add_parser('extract', help='save the current music of a track as mp3')
     p.add_argument('track'); p.add_argument('out'); p.add_argument('--bank')
+    p = sp.add_parser('extract-all', help='extract every music track into extract/areas|bosses|menu_and_credits, properly named')
+    p.add_argument('out', nargs='?', help='destination folder (default extract/ next to music_swap.py)')
+    p.add_argument('--bank')
     p = sp.add_parser('_fmod'); p.add_argument('kind'); p.add_argument('bank')
     p.add_argument('event', nargs='?'); p.add_argument('start_ms', nargs='?', type=int); p.add_argument('ms', nargs='?', type=int)
     a = ap.parse_args()
     a.game = data_dir_of(a.game) if a.game else find_game()
     if not a.game: raise SystemExit("game not found; pass --game \"<game folder>\"")
     if getattr(a, 'bank', None) is None: a.bank = game_paths(a.game)['bank']
-    {'list': cmd_list, 'swap': cmd_swap, 'restore': cmd_restore, 'extract': cmd_extract, '_fmod': cmd_fmod}[a.cmd](a)
+    {'list': cmd_list, 'swap': cmd_swap, 'restore': cmd_restore, 'extract': cmd_extract, 'extract-all': cmd_extract_all, '_fmod': cmd_fmod}[a.cmd](a)
 
 
 if __name__ == '__main__':

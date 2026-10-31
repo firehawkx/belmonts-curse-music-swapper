@@ -1,6 +1,7 @@
 music/
 backup/
 cache/
+extract/
 history.json
 config.json
 *.bank

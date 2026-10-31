@@ -86,6 +86,7 @@
     <span class="pill" id="st-game">…</span>
     <span class="pill" id="st-bank">…</span>
     <span class="sp"></span>
+    <button id="b-extract" data-t="extractAll"></button>
     <button id="b-undo" data-t="undo"></button>
     <button id="b-all" data-t="restoreAll"></button>
   </div>
@@ -101,7 +102,7 @@
 const T = {
   en: {
     title: 'Music Swapper', subtitle: "Castlevania: Belmont's Curse. Pick an area or boss, pick the new music, swap.",
-    undo: 'Undo last swap', restoreAll: 'Restore all music',
+    undo: 'Undo last swap', restoreAll: 'Restore all music', extractAll: 'Extract all',
     gameOpen: 'Game is OPEN: close it to swap', gameClosed: 'Game closed', bank: 'Installed Master.bank: {0} MB',
     tabs: {areas: 'Areas', bosses: 'Bosses', other: 'Menu & credits', all: 'All tracks'}, search: 'Search…',
     anyLen: 'any length', upTo: 'up to {0}', swappedFor: 'Swapped for {0} ({1})',
@@ -110,6 +111,8 @@ const T = {
     tooLong: 'This one is {0}: longer than the {1} limit, it will not go in.',
     shorter: 'Shorter than the original: silence until the game loops.', nothing: 'Nothing here.',
     uploading: 'Uploading {0}…', swapping: 'Swapping {0}… (encodes, builds the bank and tests it in the game\'s FMOD)',
+    extracting: 'Extracting every track… (decodes with the game\'s FMOD, mp3 into the extract folder)',
+    extracted: 'Extracted {0} tracks to the extract folder',
     restoring: 'Restoring {0}…',
     done: 'Done, installed in the game', notDone: 'Not changed (nothing was written)', failed: 'Failed', error: 'Error',
     copying: 'Copying…', ready: 'Done',
@@ -125,7 +128,7 @@ const T = {
   },
   pt: {
     title: 'Trocar Música', subtitle: "Castlevania: Belmont's Curse. Escolha a área ou o chefe, a música nova, e troca.",
-    undo: 'Desfazer última troca', restoreAll: 'Restaurar todas as músicas',
+    undo: 'Desfazer última troca', restoreAll: 'Restaurar todas as músicas', extractAll: 'Extrair tudo',
     gameOpen: 'Jogo ABERTO: feche pra trocar', gameClosed: 'Jogo fechado', bank: 'Master.bank instalado: {0} MB',
     tabs: {areas: 'Áreas', bosses: 'Chefes', other: 'Menu e créditos', all: 'Todas as faixas'}, search: 'Buscar…',
     anyLen: 'qualquer tamanho', upTo: 'até {0}', swappedFor: 'Trocada por {0} ({1})',
@@ -134,6 +137,8 @@ const T = {
     tooLong: 'Essa tem {0}: maior que o limite de {1}, não vai passar.',
     shorter: 'Menor que a original: sobra silêncio até o loop do jogo.', nothing: 'Nada aqui.',
     uploading: 'Enviando {0}…', swapping: 'Trocando {0}… (codifica, monta o bank e testa no FMOD do jogo)',
+    extracting: 'Extraindo todas as faixas… (decodifica com o FMOD do jogo, mp3 para a pasta de extração)',
+    extracted: '{0} faixas extraídas para a pasta de extração',
     restoring: 'Voltando {0}…',
     done: 'Pronto, instalado no jogo', notDone: 'Não mudou (nada foi gravado)', failed: 'Não deu', error: 'Erro',
     copying: 'Copiando…', ready: 'Pronto',
@@ -148,48 +153,9 @@ const T = {
     err: {busy: 'Já tem uma troca rodando', game_open: 'Feche o jogo antes (ele trava o Master.bank)', missing: 'Arquivo não existe: {0}', not_found: 'Não achei', no_game: 'Jogo não encontrado', bad_game: "Isso não é o jogo: escolha o Castlevania Belmont's Curse.exe na pasta do jogo.", no_dialog: 'A janela de arquivos não abriu: cole o caminho abaixo.'},
   },
 };
-const NAMES = {
-  'Mus_StartScreen': ['Main Menu', '', '', 'other'],
-  'Mus_Credits_Normal': ['Credits', '', 'Créditos', 'other'],
-  'Mus_Credits_True': ['Good Ending', '', 'Final bom', 'other'],
-  'Mus_Credits_Bad': ['Bad Ending', '', 'Final ruim', 'other'],
-  'Street Poor_Arrangement1 - Rose Theme': ['Rose Intro Theme', '', 'Tema de abertura da Rose', 'areas'],
-  'Mus_Biome_StreetsPoor_Intro_Edit': ['Pre Intro to Paris Biome', '', 'Antes de Paris', 'areas'],
-  'Mus_Biome_StreetsPoor_Edit_Newer_AtoB': ['Paris Streets (A → B)', '', 'Ruas de Paris', 'areas'],
-  'Mus_Biome_StreetsPoor_Edit_Newer_BtoA': ['Paris Streets (B → A)', '', 'Ruas de Paris', 'areas'],
-  'Mus_Biome_Cemetary_Edit': ['Holy Innocents Cemetery', '', 'Cemitério dos Inocentes', 'areas'],
-  'Mus_Biome_Catacombs_Edit': ['Catacombs of Paris', '', 'Catacumbas de Paris', 'areas'],
-  'Mus_Biome_ClockTower_Edit': ['Clock Tower', '', 'Torre do Relógio', 'areas'],
-  'Mus_Biome_Library_Edit': ['Library', '', 'Biblioteca', 'areas'],
-  'Mus_Biome_MainHall_Edit_BloodyTears_New': ['Main Hall', '', 'Salão Principal', 'areas'],
-  'Mus_Biome_MainHall_Bridge_Edit': ['Notre-Dame Bridge / Castle Drawbridge', '', 'Ponte de Notre-Dame / Ponte levadiça', 'areas'],
-  'Mus_Biome_MainHall_Bridge_Edit_Drums': ['Notre-Dame Bridge / Castle Drawbridge (drums)', '', 'Ponte de Notre-Dame / Ponte levadiça (tambores)', 'areas'],
-  'Mus_Biome_NotreDame_Edit': ['Notre-Dame', '', '', 'areas'],
-  'Mus_Biome_HallOfMirrors_Edit': ['Hall of Mirrors', '', 'Salão dos Espelhos', 'areas'],
-  'Mus_Biome_MasterQuarters': ["Master's Quarters", '', 'Aposentos do Mestre', 'areas'],
-  'Mus_Boss_Leon_Main': ['The Fallen (Leon)', 'Gate to the Catacombs, Paris Streets', 'Portão das Catacumbas, Ruas de Paris', 'bosses'],
-  'Mus_Boss_Jeanne_Main': ['Joan of Arc', 'Roof of the Tower, Paris Streets', 'Telhado da Torre, Ruas de Paris', 'bosses'],
-  'Mus_Boss_Medusa': ['Medusa', "Serpent's Lair, Holy Innocents' Cemetery", 'Covil da Serpente, Cemitério dos Inocentes', 'bosses'],
-  'Mus_Boss_Death_Catacombs': ['Death', 'Stairway to Hell, Catacombs', 'Escadaria do Inferno, Catacumbas', 'bosses'],
-  'Mus_Boss_Isaac_MainHall_Edit': ['Isaac', 'Main Hall', 'Salão Principal', 'bosses'],
-  'Mus_Boss_Talos_Edit': ['Talos', 'Throne of the Builder, Clock Tower', 'Trono do Construtor, Torre do Relógio', 'bosses'],
-  'Mus_Boss_Carmilla_Edit': ['Carmilla', 'Observatory, Library', 'Observatório, Biblioteca', 'bosses'],
-  'Mus_Room_Brauner': ['Brauner', "Brauner's Atelier, Main Hall", 'Ateliê do Brauner, Salão Principal', 'bosses'],
-  'Mus_Boss_Mammon': ['Mammon', "Mammon's Lair, Catacombs of Paris", 'Covil do Mammon, Catacumbas de Paris', 'bosses'],
-  'Mus_Boss_Jeanne_Rematch': ['Joan of Arc (Rematch)', 'Courage Bell, Notre-Dame', 'Sino da Coragem, Notre-Dame', 'bosses'],
-  'Mus_Boss_Death_NotreDame_Edit': ['Death (Second Encounter)', 'Transept, Notre-Dame', 'Transepto, Notre-Dame', 'bosses'],
-  'Mus_Room_SaintLouis': ['Saint Louis', 'Palace of Justice, Paris Streets', 'Palácio da Justiça, Ruas de Paris', 'bosses'],
-  'Mus_Boss_Isaac_ClockTower_Edit': ['Isaac (Second Encounter)', 'Heart of the Clock, Clock Tower', 'Coração do Relógio, Torre do Relógio', 'bosses'],
-  'Mus_Boss_Dracula_Edit': ['Dracula (First Fight)', "Court of the Night, Master's Quarters", 'Corte da Noite, Aposentos do Mestre', 'bosses'],
-  'Mus_Boss_Succubus': ['Succubus', 'Hall of Mirrors, Belmont Manor', 'Salão dos Espelhos, Mansão Belmont', 'bosses'],
-  'Mus_Boss_StainedGlassKnight': ['Doppelganger', 'Gallery of the Four Virtues, Notre-Dame', 'Galeria das Quatro Virtudes, Notre-Dame', 'bosses'],
-  'Mus_Boss_Erinys_Edit': ['Arthur', 'Chapel, Notre-Dame', 'Capela, Notre-Dame', 'bosses'],
-  'Mus_Boss_DraculaBeast': ['Dracula (Beast)', "Court of the Night, Master's Quarters", 'Corte da Noite, Aposentos do Mestre', 'bosses'],
-  'Mus_Boss_DraculaBeast_Edit': ['Dracula (Beast, edit)', "Court of the Night, Master's Quarters", 'Corte da Noite, Aposentos do Mestre', 'bosses'],
-};
-const ORDER = Object.keys(NAMES);
 let lang = 'en'; try { lang = localStorage.getItem('lang') || 'en'; } catch (e) {}
 let state = null, tab = 'areas', query = '', picks = {}, busy = false, playing = null;
+let NAMES = {};  // track id -> [english title, english stage, pt title/stage, tab]; served from /api/state (music_swap.py TRACKS)
 
 const $ = s => document.querySelector(s);
 const t = (k, ...a) => (k.split('.').reduce((o, p) => o && o[p], T[lang]) || k).replace(/\{(\d)\}/g, (_, i) => a[i]);
@@ -235,6 +201,7 @@ function status() {
 async function load() {
   const r = await fetch('/api/state'); state = await r.json();
   if (state.error) { log(t('error'), state.error, false); return; }
+  if (state.names) NAMES = state.names;
   render();
 }
 
@@ -261,7 +228,7 @@ function render() {
 }
 
 function renderList() {
-  const q = query.toLowerCase();
+  const q = query.toLowerCase(), ORDER = Object.keys(NAMES);
   let fx = state.tracks.map(f => ({...f, ...info(f.track)}));
   if (tab !== 'all') fx = fx.filter(f => f.group === tab).sort((a, b) => ORDER.indexOf(a.track) - ORDER.indexOf(b.track));
   else fx.sort((a, b) => a.track.localeCompare(b.track));
@@ -340,6 +307,18 @@ function restoreBank(what, text) {
   if (confirm(text)) act('/api/restore', {what}, t('copying'));
 }
 
+async function extractAll() {
+  busy = true; renderList();
+  log('<span class="spin"></span> ' + esc(t('extracting')), '', null, true);
+  try {
+    const r = await fetch('/api/extract_all', {method: 'POST', body: '{}'}); const j = await r.json();
+    if (j.error) log(t('failed'), errText(j), false);
+    else if (j.ok) log(t('extracted', j.count), (j.log || '') + '\n→ ' + j.dir, true);
+    else log(t('failed'), j.log || '', false);
+    busy = false; playing = null; await load(); return j.ok;
+  } catch (err) { log(t('error'), String(err), false); busy = false; renderList(); }
+}
+
 function log(title, body, ok, html) {
   $('#log').style.display = 'block';
   $('#log-t')[html ? 'innerHTML' : 'textContent'] = title;
@@ -354,6 +333,7 @@ document.querySelectorAll('.lang button').forEach(b => b.onclick = () => {
 $('#b-change').onclick = findGame;
 $('#b-undo').onclick = () => restoreBank('undo', t('cUndo'));
 $('#b-all').onclick = () => restoreBank('all', t('cAll'));
+$('#b-extract').onclick = () => { if (!busy) extractAll(); };
 texts(); load();
 setInterval(async () => {
   if (busy || !state || !state.tracks) return;
