@@ -8,3 +8,5 @@ config.json
 *.bank.new
 __pycache__/
 ffmpeg/
+Soundtracks/
+Soundtracks - BACKUP - DO NOT TOUCH/

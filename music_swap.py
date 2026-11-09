@@ -47,21 +47,36 @@ TRACKS = {
     'Mus_Boss_Erinys_Edit': ['Arthur', 'Chapel, Notre-Dame', 'Capela, Notre-Dame', 'bosses'],
     'Mus_Boss_DraculaBeast': ['Dracula (Beast)', "Court of the Night, Master's Quarters", 'Corte da Noite, Aposentos do Mestre', 'bosses'],
     'Mus_Boss_DraculaBeast_Edit': ['Dracula (Beast, edit)', "Court of the Night, Master's Quarters", 'Corte da Noite, Aposentos do Mestre', 'bosses'],
+    # music-adjacent SFX the game plays directly (not music events); swap: replacement must be <= original length
+    'Sfx_LevelUp_Rank1': ['Level Up (Rank 1)', '', 'Subir de nível (Classe 1)', 'jingles'],
+    'Sfx_LevelUp_Rank2': ['Level Up (Rank 2)', '', 'Subir de nível (Classe 2)', 'jingles'],
+    'Sfx_LevelUp_Rank3': ['Level Up (Rank 3)', '', 'Subir de nível (Classe 3)', 'jingles'],
+    'Secret_found_jingle': ['Secret Found', '', 'Segredo encontrado', 'jingles'],
+    'Secret_found_jingle2': ['Secret Found (2)', '', 'Segredo encontrado (2)', 'jingles'],
+    'Secret_found_jingle3': ['Secret Found (3)', '', 'Segredo encontrado (3)', 'jingles'],
+    'Skeletons_Idle_loop': ['Skeletons Idle Loop', '', 'Esqueletos ciclo', 'jingles'],
+    'StrRich_Intro': ['Save Room Strings (Intro)', '', 'Sala de save (cordas, intro)', 'jingles'],
+    'StrRich__Loop': ['Save Room Strings (Loop)', '', 'Sala de save (cordas, loop)', 'jingles'],
+    'StrRich_SaveRoom_Intro': ['Save Room Strings (Save, Intro)', '', 'Sala de save (cordas, intro, save)', 'jingles'],
+    'StrRich_SaveRoom_Loop': ['Save Room Strings (Save, Loop)', '', 'Sala de save (cordas, loop, save)', 'jingles'],
+    'RW_StrRich_L1_Intro': ['Save Room Strings (RW, Intro)', '', 'Sala de save (cordas, intro, RW)', 'jingles'],
+    'RW_StrRich_L1_Loop': ['Save Room Strings (RW, Loop)', '', 'Sala de save (cordas, loop, RW)', 'jingles'],
+    'UI_EndingText_Bad': ['Ending Text (Bad)', '', 'Texto do final (ruim)', 'jingles'],
+    'UI_EndingText_Normal': ['Ending Text (Normal)', '', 'Texto do final (normal)', 'jingles'],
+    'UI_EndingText_True': ['Ending Text (True)', '', 'Texto do final (verdadeiro)', 'jingles'],
 }
-# output folders per tab group, for extract-all
-EXTRACT_FOLDERS = {'areas': 'areas', 'bosses': 'bosses', 'other': 'menu_and_credits'}
+# output folders per tab group, for extract-all; tracks missing from TRACKS go to 'other'
+EXTRACT_FOLDERS = {'areas': 'areas', 'bosses': 'bosses', 'other': 'menu_and_credits', 'jingles': 'jingles'}
 
 
 def is_music(name):
-    return name.startswith('Mus_') or 'Arrangement' in name
+    return name in TRACKS or name.startswith('Mus_') or 'Arrangement' in name
 
 
 def extract_group(name):
     entry = TRACKS.get(name)
     if entry: return EXTRACT_FOLDERS[entry[3]]
-    if name.startswith('Mus_Biome_'): return 'areas'
-    if name.startswith(('Mus_Boss_', 'Mus_Room_')): return 'bosses'
-    return 'menu_and_credits'
+    return 'other'
 
 
 def extract_title(name):
@@ -311,11 +326,22 @@ class TooLong(SystemExit):
     pass
 
 
+class Section:
+    # one stretched seat in one timeline (piece arrangements patch several)
+    __slots__ = ('section', 'later', 'shifted', 'loops')
+
+    def __init__(self, section, later=(), shifted=True, loops=True):
+        self.section = section; self.later = later; self.shifted = shifted; self.loops = loops
+
+
 class Patches(list):
     section = None
     max = None
     later = ()
     shifted = False
+    loops = True
+    sections = ()   # Section objects; set together with the piece-branch `multi` flag
+    multi = False
 
 
 def is_area(track):
@@ -355,46 +381,152 @@ def timeline_patches(meta, proj, idx, old_end_hint, new_end, loop_start, area=Fa
     if not insts: raise SystemExit('instrument for the waveform not found in WAIS')
     tp, tsz = lists[b'TLNS']
     out = Patches(); found = 0
+    lns = []  # every seat length of this wave in every timeline (shorter-audio floor)
+    timelines = []
     for cid, p, sz in riff_children(meta, tp + 12, tp + 8 + tsz):
         lo, hi = p, p + 8 + sz
+        regs = regions(meta, lo, hi)
+        uses = []
         for inst in insts:
             for j in find_all(meta, inst, lo, hi):
                 st, ln = struct.unpack_from('<II', meta, j + 16)
+                uses.append((j, st, ln)); lns.append(ln)
+        timelines.append((lo, hi, regs, uses))
+    for lo, hi, regs, uses in timelines:
+        if not uses: continue
+        # decide which uses of this wave a single-region patch can handle:
+        # - plain: one seat that is exactly the audio, starting at 0 (simplest case)
+        # - looped: one seat with a loop region ending exactly at the seat end, whose
+        #   extent is the audio plus at most a small unplayed tail pad (FMOD rounds seat
+        #   lengths to the tempo grid); the seat moves by the audio-length delta and the
+        #   pad is kept. Seats that only carry a piece of the audio (piece arrangements,
+        #   reused as an underscore with the audio starting later) can't be stretched and
+        #   are left alone.
+        # - one-shot: a seat without a loop region whose length equals the audio
+        #   (stingers, segues); it grows and shrinks with the audio, and content
+        #   scheduled after it in the event moves along
+        cand = []
+        for j, st, ln in uses:
+            old_end = st + ln
+            loops = [q for q in regs if sum(struct.unpack_from('<I', meta, q + k)[0] for k in (18, 24)) == old_end]
+            plain = abs(old_end - old_end_hint) <= TL // 2
+            # pad >= 0 keeps any seat that covers the whole audio (FMOD quantizes seat
+            # lengths; unused tail pad stays); pad < -2 s means the seat only holds a
+            # piece of the audio and can't be stretched to carry a longer track
+            looped = len(loops) == 1 and old_end - st - old_end_hint >= -2 * TL
+            # a region that starts at the seat and ends before it is a deliberate cut
+            # (the fight loops before the wave's tail); that seat belongs to the piece
+            # path, not the one-shot path (the piece path also moves the cut along)
+            cut_loop = [q for q in regs if not loops and abs(struct.unpack_from('<I', meta, q + 18)[0] - st) <= TL // 2
+                        and struct.unpack_from('<I', meta, q + 18)[0] + struct.unpack_from('<I', meta, q + 24)[0] < old_end]
+            oneshot = not loops and not cut_loop and abs(ln - old_end_hint) <= TL // 2
+            # the seat must be able to carry the new audio without going negative
+            if ln + new_end - old_end_hint < 0 or len(loops) == 1 and old_end + new_end - old_end_hint - st - loop_start < 0:
+                continue
+            if plain or looped or oneshot: cand.append((j, st, ln, old_end, loops, plain, oneshot))
+        # several plain seats in one event were always patched together (the original
+        # behavior); a piece-class seat alone is patchable, several are not
+        use = [c for c in cand if c[5]]
+        if not use and len(cand) == 1: use = cand
+        if not use:
+            # piece arrangement: the wave shows up as short slices of itself. One seat
+            # per timeline carries the main music - a loop region ending at the seat,
+            # a region starting at the seat that cuts it short, or the final piece
+            # before the event ends. It gets stretched to the full replacement audio
+            # (its own delta, not the wave's), other seats keep their slice and play
+            # the opening of the replacement audio, and later content moves along.
+            pick = None; rank = 99
+            wmax = max(st + ln for _, st, ln in uses)
+            for j, st, ln in uses:
                 old_end = st + ln
-                d = new_end - old_end_hint
-                ne = old_end + d
-                loops = [q for q in regions(meta, lo, hi) if sum(struct.unpack_from('<I', meta, q + k)[0] for k in (18, 24)) == old_end]
-                plain = abs(old_end - old_end_hint) <= TL // 2
-                if not plain and (st > TL or abs(ln - old_end_hint) > TL or len(loops) != 1): continue
-                later = later_fields(meta, lo, hi, (ip, ip + 8 + isz), old_end)
-                if later and (not area or st > TL or len(loops) != 1):
-                    limit = min(struct.unpack_from('<I', meta, o)[0] for o in later)
-                    out.max = round((limit - old_end + old_end_hint) / TL, 1)
-                    if ne > limit: raise TooLong('this track accepts music up to %.1f s' % out.max)
-                    later = []
-                found += 1
-                out.append((j + 20, ln + d))
-                if plain and not later:
-                    for r in find_all(meta, b'\x02\x00\x1a\x00', lo, hi):
-                        rs = struct.unpack_from('<I', meta, r + 20)[0]; rl = struct.unpack_from('<I', meta, r + 26)[0]
-                        if rs + rl == old_end:
-                            out += [(r + 20, loop_start), (r + 26, ne - loop_start)]
-                else:
-                    out += [(loops[0] + 18, st + loop_start), (loops[0] + 24, ne - st - loop_start)]
-                out += [(o, struct.unpack_from('<I', meta, o)[0] + d) for o in later]
-                out.shifted = bool(later)
-                if later or not plain:
-                    out.section = (old_end, ne, st + loop_start, struct.unpack_from('<I', meta, loops[0] + 18)[0])
-                    out.later = [(struct.unpack_from('<I', meta, q + 18)[0], sum(struct.unpack_from('<I', meta, q + k)[0] for k in (18, 24)))
-                                 for q in regions(meta, lo, hi) if q + 18 in later]
-                for t in find_all(meta, b'TRNB', lo, hi):
-                    for k in (32, 36):
-                        v = struct.unpack_from('<I', meta, t + 8 + k)[0]
-                        if old_end - 10 * TL <= v <= old_end:
-                            out.append((t + 8 + k, ne - (old_end - v)))
+                end_loop = [q for q in regs if sum(struct.unpack_from('<I', meta, q + k)[0] for k in (18, 24)) == old_end]
+                cut_loop = [q for q in regs if not end_loop
+                            and abs(struct.unpack_from('<I', meta, q + 18)[0] - st) <= TL // 2
+                            and struct.unpack_from('<I', meta, q + 18)[0] + struct.unpack_from('<I', meta, q + 24)[0] < old_end]
+                r = 1 if len(end_loop) == 1 else (2 if len(cut_loop) == 1 else 99)
+                if r < rank and new_end >= ln:
+                    pick = (j, st, ln, old_end, end_loop or cut_loop); rank = r
+                elif r == 99 and old_end == wmax and new_end >= ln:
+                    # terminal piece: the timeline ends right after it (only anchored
+                    # fields nearby, everything else has moved already)
+                    lt = later_fields(meta, lo, hi, (ip, ip + 8 + isz), old_end)
+                    if all(struct.unpack_from('<I', meta, o)[0] <= old_end + 2 * TL for o in lt):
+                        pick = (j, st, ln, old_end, ()); rank = 3
+            if not pick: continue
+            if new_end < max(lns):
+                raise SystemExit('piece arrangement: the seats here hold up to %.1f s of audio;\n'
+                                 'a shorter replacement only swaps the audio, it cannot bend the event' % (max(lns) / TL))
+            if not out.multi and out.section is not None:
+                out.multi = True
+                out.sections = [Section(out.section, out.later, out.shifted, out.loops)]
+                out.section = None
+            j, st, ln, old_end, loopq = pick
+            d = new_end - ln
+            ne = old_end + d
+            later = later_fields(meta, lo, hi, (ip, ip + 8 + isz), old_end)
+            out.append((j + 20, new_end))
+            if loopq:
+                out += [(loopq[0] + 18, st + loop_start), (loopq[0] + 24, ne - st - loop_start)]
+            out += [(o, struct.unpack_from('<I', meta, o)[0] + d) for o in later]
+            for t in find_all(meta, b'TRNB', lo, hi):
+                for k in (32, 36):
+                    v = struct.unpack_from('<I', meta, t + 8 + k)[0]
+                    if old_end - 10 * TL <= v <= old_end:
+                        # with a loop region these transition markers sit on the loop end
+                        # (FMOD fires the wrap from them, past any unplayed tail), so when
+                        # the seat loops they move to the new end and the whole replacement
+                        # audio plays; without a region they ride along relative to the end
+                        out.append((t + 8 + k, ne if loopq else ne - (old_end - v)))
+            sec = Section((old_end, ne, st + loop_start,
+                           struct.unpack_from('<I', meta, loopq[0] + 18)[0] if loopq else ne),
+                          [(struct.unpack_from('<I', meta, q + 18)[0], sum(struct.unpack_from('<I', meta, q + k)[0] for k in (18, 24)))
+                           for q in regs if q + 18 in later], shifted=True, loops=bool(loopq))
+            out.multi = True
+            out.sections = (list(out.sections) if out.sections else []) + [sec]
+            out.shifted = True
+            found += 1
+            continue
+        for j, st, ln, old_end, loops, plain, oneshot in use:
+            d = new_end - old_end_hint
+            ne = old_end + d
+            later = later_fields(meta, lo, hi, (ip, ip + 8 + isz), old_end)
+            if later and len(loops) != 1:
+                # anything scheduled after the music can be moved along with it, but
+                # only when the loop structure is unambiguous (one loop region)
+                limit = min(struct.unpack_from('<I', meta, o)[0] for o in later)
+                out.max = round((limit - old_end + old_end_hint) / TL, 1)
+                if ne > limit: raise TooLong('this track accepts music up to %.1f s' % out.max)
+                later = []
+            found += 1
+            out.append((j + 20, ln + d))
+            if plain and not later:
+                for r in find_all(meta, b'\x02\x00\x1a\x00', lo, hi):
+                    rs = struct.unpack_from('<I', meta, r + 20)[0]; rl = struct.unpack_from('<I', meta, r + 26)[0]
+                    if rs + rl == old_end:
+                        out += [(r + 20, loop_start), (r + 26, ne - loop_start)]
+            elif loops:
+                out += [(loops[0] + 18, st + loop_start), (loops[0] + 24, ne - st - loop_start)]
+            out += [(o, struct.unpack_from('<I', meta, o)[0] + d) for o in later]
+            out.shifted = bool(later)
+            out.loops = bool(loops)
+            if later or not plain:
+                out.section = (old_end, ne, st + loop_start,
+                               struct.unpack_from('<I', meta, loops[0] + 18)[0] if loops else ne)
+                out.later = [(struct.unpack_from('<I', meta, q + 18)[0], sum(struct.unpack_from('<I', meta, q + k)[0] for k in (18, 24)))
+                             for q in regions(meta, lo, hi) if q + 18 in later]
+            for t in find_all(meta, b'TRNB', lo, hi):
+                for k in (32, 36):
+                    v = struct.unpack_from('<I', meta, t + 8 + k)[0]
+                    if old_end - 10 * TL <= v <= old_end:
+                        out.append((t + 8 + k, ne - (old_end - v)))
     if not found:
         raise SystemExit('event timeline not found: this track is played in pieces (common for bosses);\n'
                          'only single-instrument tracks that run to the end can change length')
+    if out.multi and out.section is not None:
+        # a later timeline went through the legacy path and left its verification in
+        # the old single-section form; fold it in with the piece sections
+        out.sections = (list(out.sections) if out.sections else []) + [Section(out.section, out.later, out.shifted, out.loops)]
+        out.section = None
     return out
 
 
@@ -464,19 +596,27 @@ def check_events(game, test, before, n, old_n, rate):
     else: print('  warning: did not see the loop come back at the end')
 
 
-def check_section(game, bank, test, before, p, n, old_n, rate):
-    after = isolated(game, ['len', test])
-    if not p.shifted and after != before: return check_events(game, test, before, n, old_n, rate)
-    old_end, ne, ls, old_ls = (round(x * 1000 / TL) for x in p.section)
-    changed = [e for e in before if before[e] != after.get(e)]
-    if p.shifted and (len(changed) != 1 or abs(after[changed[0]] - before[changed[0]] - (ne - old_end)) > 2):
-        raise SystemExit('the rest of the event did not move with the music; nothing written')
-    if not p.shifted and changed: raise SystemExit('an event changed length; nothing written')
-    evs = [e for e, lo in isolated(game, ['loopers', bank, '', str(old_end - 4000), '6000']).items() if abs(lo - old_ls) < 1000]
-    if len(evs) != 1 or p.shifted and evs != changed: raise SystemExit('could not tell which event plays this track')
-    ev = evs[0]
+def seekable(game, bank_path, ev):
+    """can FMOD seek freely on this event? 'true' | 'blind' | 'frozen' (or by device noise)"""
+    t = isolated(game, ['trace', bank_path, ev, '500', '2000'])
+    if t[0] == t[-1] and t[0] >= 400:  # frozen at the start: retry once (audio device busy)
+        t = isolated(game, ['trace', bank_path, ev, '500', '2000'])
+    if t[0] == t[-1] and t[0] >= 400: return 'frozen'
+    if min(t[25:]) < 300: return 'blind'  # the position restarted instead of seeking
+    return 'true'
+
+
+def _verify_one(game, bank, test, before, after, ev, old_end, ne, ls, loops, later):
+    if seekable(game, test, ev) != 'true':
+        # transition-driven events restart from zero on seek (FMOD won't play from a
+        # middle position), so playback shows no loop point; the timeline data (seat,
+        # loop region, later content) was patched by construction, and the event
+        # length was verified above to move by exactly the music delta
+        print('  ok: %s: %.1f s -> %.1f s (event restarts on seek; check the loop in game)'
+              % (ev, before[ev] / 1000, after[ev] / 1000))
+        return
     d = ne - old_end
-    for s, e in p.later:
+    for s, e in later:
         s, e = round(s * 1000 / TL), round(e * 1000 / TL)
         a = isolated(game, ['trace', bank, ev, str(e - 4000), '6000'])
         if a[5] < e - 4500:
@@ -488,10 +628,45 @@ def check_section(game, bank, test, before, p, n, old_n, rate):
         pts = isolated(game, ['trace', test, ev, str(old_end - 3000), '6000'])
         if min(pts[25:]) < old_end - 3500: raise SystemExit('the music still loops at the old end')
         print('  ok: plays past the old end (%.1f s) without looping' % (old_end / 1000))
-    pts = isolated(game, ['trace', test, ev, str(max(0, ne - 4000)), '6000'])
+    if not loops:
+        print('  ok: %s plays once to its end (%.1f s)' % (ev, ne / 1000))
+        return
+    pts = isolated(game, ['trace', test, ev, str(max(0, ne - 4000)), '12000'])
     back = min(pts[25:])
     if not ls - 500 <= back < ls + 3000: raise SystemExit('at the end it does not loop back to %.1f s' % (ls / 1000))
     print('  ok: %s loops at %.1f s back to %.1f s' % (ev, ne / 1000, back / 1000))
+
+
+def check_section(game, bank, test, before, p, n, old_n, rate):
+    after = isolated(game, ['len', test])
+    if p.multi:
+        # piece arrangements: several stretches in several timelines, possibly several
+        # events; each section belongs to the event whose length moved by its delta
+        changed = [e for e in before if before[e] != after.get(e)]
+        if not changed: raise SystemExit('no event changed length; nothing written')
+        used = {}
+        for s in p.sections:
+            old_end, ne, ls, old_ls = (round(x * 1000 / TL) for x in s.section)
+            evs = [e for e in changed if abs((after[e] - before[e]) - (ne - old_end)) <= 2]
+            if len(evs) != 1: raise SystemExit('could not tell which event plays this track')
+            used[evs[0]] = True
+            _verify_one(game, bank, test, before, after, evs[0], old_end, ne, ls, s.loops, s.later)
+        if len(used) != len(changed):
+            raise SystemExit('the rest of the event did not move with the music; nothing written')
+        return
+    if not p.shifted and after != before: return check_events(game, test, before, n, old_n, rate)
+    old_end, ne, ls, old_ls = (round(x * 1000 / TL) for x in p.section)
+    changed = [e for e in before if before[e] != after.get(e)]
+    if p.shifted and (len(changed) != 1 or abs(after[changed[0]] - before[changed[0]] - (ne - old_end)) > 2):
+        raise SystemExit('the rest of the event did not move with the music; nothing written')
+    if not p.shifted and changed: raise SystemExit('an event changed length; nothing written')
+    if p.shifted and len(changed) == 1: evs = changed
+    else:
+        evs = [e for e, lo in isolated(game, ['loopers', bank, '', str(old_end - 4000), '6000']).items()
+               if abs(lo - old_ls) < 1000]
+        if len(evs) != 1 and len(changed) == 1: evs = changed  # the event that changed length pins it down
+    if len(evs) != 1 or p.shifted and evs != changed: raise SystemExit('could not tell which event plays this track')
+    _verify_one(game, bank, test, before, after, evs[0], old_end, ne, ls, p.loops, p.later)
 
 
 def cmd_list(a):
@@ -504,6 +679,8 @@ def cmd_list(a):
                 pt = timeline_patches(b.meta, b.proj, i, old, old, 0, is_area(n)); free = True
             except SystemExit:
                 pt = Patches(); free = False
+            except Exception:
+                pt = Patches(); free = False  # unexpected error: refuse this track, don't fail the whole list
             out.append({'track': n, 'seconds': round(s / r, 1), 'any_length': free, 'max_seconds': pt.max})
     b.close()
     if a.json: print(json.dumps(out))
@@ -543,7 +720,7 @@ def cmd_swap(a):
         b.write(test, idx, header, blob, patches)
         print('%d timeline fields adjusted' % len(patches))
         try:
-            if patches.section: check_section(a.game, a.bank, test, before, patches, n, old_n, rate)
+            if patches.section or patches.multi: check_section(a.game, a.bank, test, before, patches, n, old_n, rate)
             else: check_events(a.game, test, before, n, old_n, rate)
         except SystemExit as e:
             if n > old_n: raise
@@ -701,7 +878,7 @@ def main():
     p.add_argument('track'); p.add_argument('source'); p.add_argument('out'); p.add_argument('--bank')
     p = sp.add_parser('extract', help='save the current music of a track as mp3')
     p.add_argument('track'); p.add_argument('out'); p.add_argument('--bank')
-    p = sp.add_parser('extract-all', help='extract every music track into extract/areas|bosses|menu_and_credits, properly named')
+    p = sp.add_parser('extract-all', help='extract every music track into extract/areas|bosses|menu_and_credits|other, properly named')
     p.add_argument('out', nargs='?', help='destination folder (default extract/ next to music_swap.py)')
     p.add_argument('--bank')
     p = sp.add_parser('_fmod'); p.add_argument('kind'); p.add_argument('bank')

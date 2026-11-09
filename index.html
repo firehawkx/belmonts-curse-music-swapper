@@ -101,10 +101,10 @@
 <script>
 const T = {
   en: {
-    title: 'Music Swapper', subtitle: "Castlevania: Belmont's Curse. Pick an area or boss, pick the new music, swap.",
+    title: 'Music Swapper', subtitle: "Castlevania: Belmont's Curse. Pick a track (area, boss, menu/credits, Other or SFX), pick the new music, swap.",
     undo: 'Undo last swap', restoreAll: 'Restore all music', extractAll: 'Extract all',
     gameOpen: 'Game is OPEN: close it to swap', gameClosed: 'Game closed', bank: 'Installed Master.bank: {0} MB',
-    tabs: {areas: 'Areas', bosses: 'Bosses', other: 'Menu & credits', all: 'All tracks'}, search: 'Search…',
+    tabs: {areas: 'Areas', bosses: 'Bosses', other: 'Menu & credits', extras: 'Other', jingles: 'SFX & jingles', all: 'All tracks'}, search: 'Search…',
     anyLen: 'any length', upTo: 'up to {0}', swappedFor: 'Swapped for {0} ({1})',
     current: 'Play current', loading: 'loading…', restore: 'Restore original',
     pick: 'Choose music…', repick: 'Change file', formats: 'mp3, ogg, wav, flac…', loopAt: 'loop restarts at', swap: 'Swap',
@@ -127,10 +127,10 @@ const T = {
     err: {busy: 'A swap is already running', game_open: 'Close the game first (it locks Master.bank)', missing: 'File not found: {0}', not_found: 'Not found', no_game: 'Game not found', bad_game: "That is not the game: pick Castlevania Belmont's Curse.exe in the game folder.", no_dialog: 'The file window did not open: paste the path below instead.'},
   },
   pt: {
-    title: 'Trocar Música', subtitle: "Castlevania: Belmont's Curse. Escolha a área ou o chefe, a música nova, e troca.",
+    title: 'Trocar Música', subtitle: "Castlevania: Belmont's Curse. Escolha a faixa (área, chefe, menu/créditos, Outras ou SFX), a música nova, e troca.",
     undo: 'Desfazer última troca', restoreAll: 'Restaurar todas as músicas', extractAll: 'Extrair tudo',
     gameOpen: 'Jogo ABERTO: feche pra trocar', gameClosed: 'Jogo fechado', bank: 'Master.bank instalado: {0} MB',
-    tabs: {areas: 'Áreas', bosses: 'Chefes', other: 'Menu e créditos', all: 'Todas as faixas'}, search: 'Buscar…',
+    tabs: {areas: 'Áreas', bosses: 'Chefes', other: 'Menu e créditos', extras: 'Outras', jingles: 'Efeitos e jingles', all: 'Todas as faixas'}, search: 'Buscar…',
     anyLen: 'qualquer tamanho', upTo: 'até {0}', swappedFor: 'Trocada por {0} ({1})',
     current: 'Ouvir a atual', loading: 'carregando…', restore: 'Voltar a original',
     pick: 'Escolher música…', repick: 'Trocar arquivo', formats: 'mp3, ogg, wav, flac…', loopAt: 'loop volta em', swap: 'Trocar',
@@ -162,7 +162,7 @@ const t = (k, ...a) => (k.split('.').reduce((o, p) => o && o[p], T[lang]) || k).
 const fmt = s => { s = Math.round(s); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const info = n => {
-  const x = NAMES[n]; if (!x) return {label: n, where: '', group: 'all'};
+  const x = NAMES[n]; if (!x) return {label: n, where: '', group: 'extras'};
   const pt = lang === 'pt';
   return {label: x[0] + (pt && x[2] && !x[1] ? ' (' + x[2] + ')' : ''), where: pt ? (x[1] ? x[2] : '') : x[1], group: x[3]};
 };
@@ -220,7 +220,7 @@ function render() {
     return;
   }
   status();
-  $('#tabs').innerHTML = ['areas', 'bosses', 'other', 'all'].map(k => `<button class="tab ${k === tab ? 'on' : ''}" data-a="${k}">${t('tabs.' + k)}</button>`).join('')
+  $('#tabs').innerHTML = ['areas', 'bosses', 'other', 'extras', 'jingles', 'all'].map(k => `<button class="tab ${k === tab ? 'on' : ''}" data-a="${k}">${t('tabs.' + k)}</button>`).join('')
     + '<span class="sp"></span><input type="search" id="search" placeholder="' + t('search') + '" value="' + esc(query) + '">';
   document.querySelectorAll('.tab').forEach(b => b.onclick = () => { tab = b.dataset.a; render(); });
   $('#search').oninput = e => { query = e.target.value; renderList(); $('#search').focus(); };
@@ -230,8 +230,8 @@ function render() {
 function renderList() {
   const q = query.toLowerCase(), ORDER = Object.keys(NAMES);
   let fx = state.tracks.map(f => ({...f, ...info(f.track)}));
-  if (tab !== 'all') fx = fx.filter(f => f.group === tab).sort((a, b) => ORDER.indexOf(a.track) - ORDER.indexOf(b.track));
-  else fx.sort((a, b) => a.track.localeCompare(b.track));
+  if (tab === 'extras' || tab === 'all') fx.sort((a, b) => a.track.localeCompare(b.track));
+  else fx = fx.filter(f => f.group === tab).sort((a, b) => ORDER.indexOf(a.track) - ORDER.indexOf(b.track));
   if (q) fx = fx.filter(f => (f.label + ' ' + f.where + ' ' + f.track).toLowerCase().includes(q));
   $('#list').innerHTML = fx.map(f => {
     const p = picks[f.track] || {}, h = state.history[f.track];
